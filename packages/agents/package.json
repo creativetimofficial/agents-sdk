@@ -46,7 +46,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/creativetimofficial/agents-sdk.git",
+    "url": "git+https://github.com/creativetimofficial/agents-sdk.git",
     "directory": "packages/agents"
   },
   "homepage": "https://github.com/creativetimofficial/agents-sdk/tree/main/packages/agents",
