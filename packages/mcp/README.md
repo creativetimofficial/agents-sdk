@@ -4,17 +4,18 @@ MCP (Model Context Protocol) server for [Creative Tim OpenClaw](https://www.crea
 
 ## What it does
 
-Adds 8 tools to your AI assistant:
+Adds 9 tools to your AI assistant:
 
 | Tool | Description |
 |------|-------------|
 | `create_agent` | Spin up a new OpenClaw AI agent |
-| `list_agents` | List all your active agents |
-| `get_agent` | Check an agent's status |
+| `list_agents` | List all your agents and their status |
+| `get_agent` | Check an agent's current status and lifecycle state |
 | `chat` | Send a message and get a reply |
 | `install_skill` | Add a capability to an agent |
 | `list_skills` | See what skills an agent has |
 | `remove_skill` | Remove a skill from an agent |
+| `restart_agent` | Restart an agent that's in error state — no data loss |
 | `delete_agent` | Permanently delete an agent |
 
 ## Getting an API Key
@@ -92,14 +93,25 @@ Add to your `claude_desktop_config.json`:
 | `OPENCLAW_API_KEY` | Your `sk-ct-...` API key (required) |
 | `CREATIVE_TIM_API_KEY` | Alias for `OPENCLAW_API_KEY` |
 
+## Agent lifecycle
+
+Agents move through the following states. Use `get_agent` to check status:
+
+| Status | Meaning |
+|--------|---------|
+| `provisioning` | Agent is starting up (~60–80s on first create) |
+| `active` | Ready to chat |
+| `error` | Transient error — use `restart_agent` to recover |
+
 ## Example prompts
 
 Once installed, you can ask your AI assistant:
 
 - *"Create a new OpenClaw agent called Research Bot using my Anthropic key sk-ant-..."*
 - *"List all my OpenClaw agents"*
-- *"Chat with agent sdk-ab3k7 and ask it to summarise this document"*
+- *"Wait for agent sdk-ab3k7 to be active, then chat with it and ask it to summarise this document"*
 - *"Install a web-search skill on my agent"*
+- *"My agent sdk-ab3k7 is in error state — restart it"*
 - *"Delete agent sdk-ab3k7 when you're done"*
 
 ## Run directly

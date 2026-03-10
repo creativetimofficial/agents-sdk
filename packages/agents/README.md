@@ -59,20 +59,32 @@ const agent = await client.agents.create({
 await db.save({ agentId: agent.id })
 ```
 
-> **Cold start:** A new agent takes ~60–80 seconds to provision. If a pre-warmed container is available (automatically spun up when you created your API key) it takes ~15–20 seconds instead. Poll `agent.status()` until `status === 'active'` before chatting.
+> **Cold start:** A new agent takes ~60–80 seconds to provision. If a pre-warmed instance is available it takes ~15–20 seconds instead. Poll `agent.status()` until `status === 'active'` before chatting.
 
-### Wait for an agent to be ready
+### Agent lifecycle
 
-After `create()`, poll until `status === 'active'` before sending messages:
+Every agent moves through these states:
+
+| `status` | `lifecycleState` | Meaning |
+|----------|-----------------|---------|
+| `provisioning` | `initializing` | Agent record created, machine starting |
+| `provisioning` | `container_starting` | Machine is up, services initialising (~60–80s) |
+| `active` | `active` | Ready to chat |
+| `error` | `error_recoverable` | Transient error — call `agent.restart()` to recover |
+
+Poll `agent.status()` after `create()` until `status === 'active'`:
 
 ```ts
-let status
+let agentStatus
 do {
   await new Promise(r => setTimeout(r, 5000))
-  status = await agent.status()
-} while (status.status === 'provisioning')
+  agentStatus = await agent.status()
+} while (agentStatus.status === 'provisioning')
 
-if (status.status === 'error') throw new Error('Agent provisioning failed')
+if (agentStatus.status === 'error') {
+  // Recover by restarting — no data is lost
+  await agent.restart()
+}
 // agent is now active — safe to chat
 ```
 
@@ -97,6 +109,8 @@ const { text } = await agent.chat('Hello!')
 
 ### Chat
 
+The first `chat()` call after a cold start transparently retries until the agent is fully warmed up — you don't need to add any retry logic yourself.
+
 ```ts
 const { text, sessionKey } = await agent.chat('Summarise this paper: ...')
 
@@ -116,19 +130,24 @@ for await (const chunk of agent.stream('Write me a poem about the ocean')) {
 
 ```ts
 const agents = await client.agents.list()
-// [{ id, name, status, createdAt, ... }]
+// [{ id, name, status, lifecycleState, createdAt, ... }]
 ```
 
-### Get an existing agent by ID
+### Restart an agent
+
+Restarts the agent process without touching any data — skills, conversation history, and configuration are all preserved. Use this to recover from an `error` state or after a transient failure.
 
 ```ts
-const agent = client.agents.get('sdk-ab3k7')
-const status = await agent.status()
+await agent.restart()
+// Agent moves back to provisioning → active automatically
+// The next chat() call will wait for the agent to be ready
 ```
+
+> Restart only restarts the running process. It does **not** affect stored skills, conversation history, or any other agent data.
 
 ### Skills
 
-Skills let you extend an agent with custom capabilities defined in markdown.
+Skills extend an agent with custom capabilities defined in markdown.
 
 ```ts
 // Install a skill
@@ -164,17 +183,18 @@ await agent.delete()
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `create(options)` | `Promise<AgentHandle>` | Create a new agent |
-| `list()` | `Promise<Agent[]>` | List all your agents |
-| `get(agentId)` | `AgentHandle` | Get a handle to an existing agent |
+| `create(options)` | `Promise<AgentHandle>` | Provision a new agent |
+| `list()` | `Promise<Agent[]>` | List all agents for this API key |
+| `get(agentId)` | `AgentHandle` | Get a handle to an existing agent (no API call) |
 
 ### `AgentHandle`
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `status()` | `Promise<Agent>` | Get current agent status |
+| `status()` | `Promise<Agent>` | Get current agent status and lifecycle state |
 | `chat(message, options?)` | `Promise<ChatResponse>` | Send a message, get a response |
-| `stream(message, options?)` | `AsyncGenerator<string>` | Stream response chunks |
+| `stream(message, options?)` | `AsyncGenerator<string>` | Stream response tokens |
+| `restart()` | `Promise<void>` | Restart the agent process — no data loss |
 | `skills.list()` | `Promise<Skill[]>` | List installed skills |
 | `skills.install(name, content)` | `Promise<void>` | Install a skill |
 | `skills.remove(name)` | `Promise<void>` | Remove a skill |
@@ -186,7 +206,22 @@ await agent.delete()
 interface CreateAgentOptions {
   name: string
   anthropicApiKey: string
-  model?: string // default: claude-sonnet-4-6
+  model?: string        // default: claude-sonnet-4-6
+  systemPrompt?: string // optional system prompt
+}
+```
+
+### `Agent`
+
+```ts
+interface Agent {
+  id: string
+  name: string
+  status: 'provisioning' | 'active' | 'error'
+  lifecycleState: string
+  model?: string
+  createdAt: string
+  updatedAt: string
 }
 ```
 
@@ -195,8 +230,8 @@ interface CreateAgentOptions {
 ```ts
 interface ChatResponse {
   text: string       // the agent's reply
-  sessionKey: string // pass as sessionId to continue the thread
-  raw: unknown       // full gateway response
+  sessionKey: string // pass as sessionId to continue the conversation thread
+  raw: unknown       // full response object
 }
 ```
 

@@ -160,6 +160,24 @@ server.tool(
 )
 
 server.tool(
+  'restart_agent',
+  'Restart an OpenClaw agent. Restarts the agent process without touching any data — skills, conversation history, and configuration are all preserved. Use this to recover from an error state or after a transient failure. The agent will be briefly unavailable (~10–30s) while it restarts.',
+  {
+    agentId: z.string().describe('The agent ID to restart'),
+  },
+  async ({ agentId }) => {
+    await getAgent(agentId).restart()
+    agentCache.delete(agentId) // clear cached handle so next call re-fetches fresh status
+    return {
+      content: [{
+        type: 'text',
+        text: `Agent ${agentId} is restarting. It will be active again in ~10–30 seconds. Use get_agent to check when status returns to "active".`,
+      }],
+    }
+  }
+)
+
+server.tool(
   'delete_agent',
   'Permanently delete an OpenClaw agent and its container.',
   {

@@ -1,6 +1,6 @@
 {
   "name": "@creative-tim/mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "MCP server for Creative Tim OpenClaw — lets Claude Code, Cursor, Lovable and other AI tools spawn and control agents",
   "author": {
     "name": "Creative Tim",
@@ -40,7 +40,7 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@creative-tim/agents": "^0.1.2",
+    "@creative-tim/agents": "^0.1.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {

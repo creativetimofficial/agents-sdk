@@ -10,6 +10,9 @@ import type {
 export class AgentHandle {
   get id(): string { return this.agentId }
 
+  /** True once we've received a real (non-warmup) reply from the gateway. */
+  private _warmedUp = false
+
   constructor(
     private readonly agentId: string,
     private readonly apiKey: string,
@@ -34,16 +37,31 @@ export class AgentHandle {
   }
 
   async chat(message: string, options: ChatOptions = {}): Promise<ChatResponse> {
-    const res = await fetch(this.url('/chat'), {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ message, sessionId: options.sessionId, stream: false }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}) as Record<string, string>)
-      throw new Error((err as Record<string, string>).error || `Chat failed: ${res.status}`)
+    // Only retry during the gateway warmup window (first call after agent becomes active).
+    // Once we've seen a real reply, _warmedUp is true and every subsequent call is single-shot.
+    const maxAttempts = this._warmedUp ? 1 : 12
+    const WARMING_REPLY = 'No response from OpenClaw.'
+
+    let lastData: ChatResponse | undefined
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 8_000))
+      const res = await fetch(this.url('/chat'), {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({ message, sessionId: options.sessionId, stream: false }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}) as Record<string, string>)
+        throw new Error((err as Record<string, string>).error || `Chat failed: ${res.status}`)
+      }
+      lastData = await res.json() as ChatResponse
+      if (lastData.text !== WARMING_REPLY) {
+        this._warmedUp = true
+        return lastData
+      }
     }
-    return res.json() as Promise<ChatResponse>
+    this._warmedUp = true
+    return lastData!
   }
 
   async *stream(message: string, options: StreamOptions = {}): AsyncGenerator<string> {
@@ -109,6 +127,16 @@ export class AgentHandle {
         throw new Error((err as Record<string, string>).error || `Failed to remove skill: ${res.status}`)
       }
     },
+  }
+
+  async restart(): Promise<void> {
+    const res = await fetch(this.url('/restart'), { method: 'POST', headers: this.headers })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}) as Record<string, string>)
+      throw new Error((err as Record<string, string>).error || `Failed to restart agent: ${res.status}`)
+    }
+    // Reset warmup flag so the next chat() auto-retries through the cold-start window
+    this._warmedUp = false
   }
 
   async delete(): Promise<void> {
